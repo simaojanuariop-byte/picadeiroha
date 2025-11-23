@@ -46,7 +46,9 @@ export default function ClientAreaPage() {
     type: 'individual',
     horse: '',
     level: 'iniciante',
-    notes: ''
+    notes: '',
+    isRecurring: false,
+    recurringEndDate: ''
   });
 
   // Carregar reservas do banco de dados
@@ -56,14 +58,19 @@ export default function ClientAreaPage() {
       const response = await fetch('/api/reservations');
       if (response.ok) {
         const data = await response.json();
-        // Filtrar reservas do utilizador actual
-        const userReservations = data.map((res: any) => ({
-          id: res.id,
-          date: res.date,
-          time: res.startTime,
-          type: res.lessonType === 'individual' ? 'Aula Individual' : 'Aula em Grupo',
-          status: res.status
-        }));
+        // Filtrar reservas do utilizador actual pelo email
+        const userReservations = data
+          .filter((res: any) => res.email === session.user?.email)
+          .map((res: any) => ({
+            id: res.id,
+            date: res.date,
+            time: res.startTime,
+            type: res.lessonType === 'individual' ? 'Aula Individual' : 'Aula em Grupo',
+            status: res.status,
+            isRecurring: res.isRecurring,
+            horse: res.horse,
+            level: res.level
+          }));
         setReservations(userReservations);
       }
     } catch (error) {

@@ -44,7 +44,8 @@ export default function Navbar() {
             </Link>
             {session ? (
               <>
-                <Link href="/client/area" className="bg-white text-amber-900 px-4 py-2 rounded hover:bg-amber-50 transition text-sm font-semibold">
+                <Link href="/client/area" className="bg-white text-amber-900 px-4 py-2 rounded hover:bg-amber-50 transition text-sm font-semibold flex items-center gap-2">
+                  👤
                   Minha Área
                 </Link>
                 {(session.user as any)?.role === 'admin' && (
@@ -91,7 +92,7 @@ export default function Navbar() {
             </Link>
             {session ? (
               <>
-                <Link href="/client/area" className="block py-2 px-4 hover:bg-amber-700 transition">Minha Área</Link>
+                <Link href="/client/area" className="block py-2 px-4 hover:bg-amber-700 transition">👤 Minha Área</Link>
                 {(session.user as any)?.role === 'admin' && (
                   <Link href="/dashboard" className="block py-2 px-4 hover:bg-amber-700 transition font-bold bg-yellow-500 text-gray-900">⚙️ Admin</Link>
                 )}
