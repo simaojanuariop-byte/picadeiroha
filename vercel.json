@@ -1,0 +1,13 @@
+{
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "env": {
+    "NEXTAUTH_SECRET": "@nextauth_secret",
+    "DATABASE_URL": "@database_url",
+    "NEXT_PUBLIC_PAYPAL_CLIENT_ID": "@paypal_client_id",
+    "PAYPAL_SECRET": "@paypal_secret"
+  },
+  "envPrefix": "NEXT_PUBLIC_",
+  "framework": "nextjs"
+}
