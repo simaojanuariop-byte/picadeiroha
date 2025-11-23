@@ -79,7 +79,7 @@ export default function ClientAreaPage() {
     } else if (status === "authenticated") {
       fetchReservations();
     }
-  }, [status, router, fetchReservations]);
+  }, [status, router]);
 
   if (status === "loading") {
     return <div className="flex items-center justify-center min-h-screen">Carregando...</div>;
@@ -115,10 +115,9 @@ export default function ClientAreaPage() {
           date: newReservation.date,
           startTime: newReservation.time,
           lessonType: newReservation.type,
-          horse: newReservation.horse || null,
+          horse: newReservation.horse || undefined,
           level: newReservation.level,
-          notes: newReservation.notes,
-          status: 'pending'
+          notes: newReservation.notes || undefined
         })
       });
 
