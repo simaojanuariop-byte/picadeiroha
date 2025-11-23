@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Download, Mail, Calendar } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Download, Mail, Calendar, RefreshCw } from 'lucide-react';
 
 interface Reservation {
   id: string;
@@ -23,39 +23,34 @@ export default function CalendarTab() {
   const [isExporting, setIsExporting] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Carregar reservas do banco de dados
-  useEffect(() => {
-    const fetchReservations = async () => {
-      try {
-        const response = await fetch('/api/reservations');
-        if (response.ok) {
-          const data = await response.json();
-          setReservations(data);
-        }
-      } catch (error) {
-        console.error('Erro ao carregar reservas:', error);
-        // Usar dados de exemplo se houver erro
-        setReservations([
-          {
-            id: '1',
-            clientName: 'João Silva',
-            professor: 'Prof. Carlos',
-            horses: ['Thunderbolt', 'Shadow'],
-            lessonType: 'group',
-            date: new Date().toISOString().split('T')[0],
-            startTime: '09:00',
-            duration: 60,
-            status: 'confirmed',
-          },
-        ]);
-      } finally {
-        setIsLoading(false);
+  // Função para carregar reservas
+  const fetchReservations = useCallback(async () => {
+    try {
+      setIsRefreshing(true);
+      const response = await fetch('/api/reservations');
+      if (response.ok) {
+        const data = await response.json();
+        setReservations(data);
       }
-    };
-
-    fetchReservations();
+    } catch (error) {
+      console.error('Erro ao carregar reservas:', error);
+    } finally {
+      setIsRefreshing(false);
+      setIsLoading(false);
+    }
   }, []);
+
+  // Carregar reservas ao montar e a cada 5 segundos
+  useEffect(() => {
+    fetchReservations();
+    
+    // Auto-refresh a cada 5 segundos
+    const interval = setInterval(fetchReservations, 5000);
+    
+    return () => clearInterval(interval);
+  }, [fetchReservations]);
 
   const getDaysInMonth = (date: Date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
@@ -154,6 +149,15 @@ export default function CalendarTab() {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-black text-black">📅 Calendário de Agendamentos</h2>
         <div className="flex gap-3">
+          <button
+            onClick={fetchReservations}
+            disabled={isRefreshing}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white rounded-lg transition font-bold"
+            title="Atualizar reservas"
+          >
+            <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
+            {isRefreshing ? 'Atualizando...' : 'Atualizar'}
+          </button>
           <button
             onClick={handleDownloadCalendarPDF}
             disabled={isExporting}

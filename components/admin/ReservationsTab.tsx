@@ -1,31 +1,80 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { Trash2, Plus, RefreshCw } from 'lucide-react';
 
 interface Reservation {
   id: string;
   clientName: string;
   professor: string;
-  horses: string[]; // array de cavalos
-  lessonType: 'individual' | 'group'; // 30 min ou 1 hora
+  horses: string[];
+  lessonType: 'individual' | 'group';
   date: string;
   startTime: string;
-  duration: 30 | 60; // minutos
+  duration: 30 | 60;
   status: 'confirmed' | 'pending' | 'cancelled';
+}
+
+interface User {
+  id: string;
+  name: string;
 }
 
 export default function ReservationsTab() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    clientName: '',
-    professor: '',
+    userId: '',
+    professor: 'Professor',
     horses: [''],
     lessonType: 'individual' as 'individual' | 'group',
     date: '',
     startTime: '',
-    duration: 30
+    level: 'iniciante',
+    notes: ''
   });
+
+  // Carregar reservas e usuários
+  const fetchData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const [resRes, usersRes] = await Promise.all([
+        fetch('/api/reservations'),
+        fetch('/api/users')
+      ]);
+
+      if (resRes.ok) {
+        const data = await resRes.json();
+        setReservations(data);
+      }
+
+      if (usersRes.ok) {
+        const data = await usersRes.json();
+        setUsers(data);
+      } else {
+        // Se API de usuários não existir, criar usuários padrão
+        setUsers([
+          { id: 'cmicbaesv000011y4mxnzhtbs', name: 'João Silva' },
+          { id: 'cmicbaesz000111y4hpcw3o79', name: 'Maria Oliveira' },
+          { id: 'cmicbaet0000211y4fnfu0m4m', name: 'Admin User' }
+        ]);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    // Auto-refresh a cada 5 segundos
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
   // Validar regras de agendamento
   const validateReservation = (newReservation: Reservation): { valid: boolean; message: string } => {
@@ -56,72 +105,80 @@ export default function ReservationsTab() {
       return { valid: false, message: `❌ Professor só pode ter máx 4 cavalos. Atualmente: ${professorHorseCount}` };
     }
 
-    // Regra 3: Max 4 aulas por hora no picadeiro
-    if (sameHourCount >= 4) {
-      return { valid: false, message: '❌ Picadeiro lotado nessa hora' };
-    }
-
     return { valid: true, message: '✅ Agendamento válido' };
   };
 
   const handleAddReservation = () => {
     setFormData({
-      clientName: '',
-      professor: '',
+      userId: '',
+      professor: 'Professor',
       horses: [''],
       lessonType: 'individual',
       date: '',
       startTime: '',
-      duration: 30
+      level: 'iniciante',
+      notes: ''
     });
     setShowModal(true);
   };
 
-  const handleSave = () => {
-    const newReservation: Reservation = {
-      id: Date.now().toString(),
-      clientName: formData.clientName,
-      professor: formData.professor,
-      horses: formData.horses.filter(h => h.trim() !== ''),
-      lessonType: formData.lessonType,
-      date: formData.date,
-      startTime: formData.startTime,
-      duration: formData.duration as 30 | 60,
-      status: 'pending'
-    };
-
-    const validation = validateReservation(newReservation);
-    if (!validation.valid) {
-      alert(validation.message);
+  const handleSave = async () => {
+    if (!formData.userId || !formData.date || !formData.startTime) {
+      alert('❌ Preencha todos os campos obrigatórios!');
       return;
     }
 
-    setReservations([...reservations, newReservation]);
-    setShowModal(false);
-    alert('✅ Reserva criada com sucesso!');
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: formData.userId,
+          date: formData.date,
+          time: formData.startTime,
+          type: formData.lessonType,
+          horse: formData.horses[0] || null,
+          level: formData.level,
+          notes: formData.notes,
+          status: 'pending'
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert('✅ Reserva criada com sucesso!');
+        setShowModal(false);
+        await fetchData(); // Recarregar dados
+      } else {
+        alert(`❌ ${data.error || 'Erro ao criar reserva'}`);
+      }
+    } catch (error) {
+      console.error('Erro:', error);
+      alert('❌ Erro ao criar reserva');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const toggleStatus = (id: string) => {
-    setReservations(
-      reservations.map(r =>
-        r.id === id
-          ? {
-              ...r,
-              status:
-                r.status === 'confirmed'
-                  ? 'cancelled'
-                  : r.status === 'pending'
-                  ? 'confirmed'
-                  : 'pending'
-            }
-          : r
-      )
-    );
-  };
+  const handleDelete = async (id: string) => {
+    if (!confirm('Tem a certeza que deseja remover esta reserva?')) return;
 
-  const handleDelete = (id: string) => {
-    if (confirm('Tem a certeza que deseja remover esta reserva?')) {
-      setReservations(reservations.filter(r => r.id !== id));
+    try {
+      const response = await fetch(`/api/reservations/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        alert('✅ Reserva removida!');
+        await fetchData();
+      } else {
+        alert('❌ Erro ao remover reserva');
+      }
+    } catch (error) {
+      console.error('Erro:', error);
+      alert('❌ Erro ao remover reserva');
     }
   };
 
@@ -151,6 +208,10 @@ export default function ReservationsTab() {
     }
   };
 
+  if (isLoading) {
+    return <div className="text-center py-8 text-gray-600 font-bold">Carregando reservas...</div>;
+  }
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -158,12 +219,23 @@ export default function ReservationsTab() {
           <h2 className="text-2xl font-black text-black">📅 Gestão de Reservas</h2>
           <p className="text-black font-bold text-sm mt-1">Regras: Máx 4 por hora | Máx 4 cavalos por professor</p>
         </div>
-        <button
-          onClick={handleAddReservation}
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-black"
-        >
-          ➕ Nova Reserva
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={fetchData}
+            className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition font-black flex items-center gap-2"
+            title="Atualizar reservas"
+          >
+            <RefreshCw size={18} />
+            Atualizar
+          </button>
+          <button
+            onClick={handleAddReservation}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-black flex items-center gap-2"
+          >
+            <Plus size={18} />
+            Nova Reserva
+          </button>
+        </div>
       </div>
 
       {reservations.length === 0 ? (
@@ -184,17 +256,14 @@ export default function ReservationsTab() {
                   <p className="text-black font-bold text-sm">⏱️ {reservation.duration} minutos ({reservation.lessonType === 'individual' ? 'Individual' : 'Grupo'})</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span
-                    onClick={() => toggleStatus(reservation.id)}
-                    className={`px-4 py-2 rounded-full text-sm font-black cursor-pointer transition ${getStatusColor(reservation.status)}`}
-                  >
+                  <span className={`px-4 py-2 rounded-full text-sm font-black ${getStatusColor(reservation.status)}`}>
                     {getStatusLabel(reservation.status)}
                   </span>
                   <button
                     onClick={() => handleDelete(reservation.id)}
                     className="text-red-600 hover:text-red-800 font-black text-xl"
                   >
-                    ✕
+                    <Trash2 size={18} />
                   </button>
                 </div>
               </div>
@@ -209,37 +278,30 @@ export default function ReservationsTab() {
             <h3 className="text-2xl font-black text-black mb-6">📅 Nova Reserva</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-black text-black mb-2">Nome do Cliente</label>
-                <input
-                  type="text"
-                  value={formData.clientName}
-                  onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
+                <label className="block text-sm font-black text-black mb-2">👤 Cliente</label>
+                <select
+                  value={formData.userId}
+                  onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold"
-                  placeholder="Nome completo"
-                />
+                >
+                  <option value="">Seleccione um cliente...</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
-                <label className="block text-sm font-black text-black mb-2">👨‍🏫 Professor</label>
+                <label className="block text-sm font-black text-black mb-2">🐴 Cavalo</label>
                 <input
                   type="text"
-                  value={formData.professor}
-                  onChange={(e) => setFormData({ ...formData, professor: e.target.value })}
+                  value={formData.horses[0] || ''}
+                  onChange={(e) => setFormData({ ...formData, horses: [e.target.value] })}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold"
-                  placeholder="Nome do professor"
+                  placeholder="Nome do cavalo"
                 />
-              </div>
-
-              <div>
-                <label className="block text-sm font-black text-black mb-2">🐴 Cavalos (separados por vírgula)</label>
-                <input
-                  type="text"
-                  value={formData.horses.join(', ')}
-                  onChange={(e) => setFormData({ ...formData, horses: e.target.value.split(',').map(h => h.trim()) })}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold"
-                  placeholder="Cavalo 1, Cavalo 2, ..."
-                />
-                <p className="text-xs text-black font-bold mt-1">Máx 4 cavalos por professor/hora</p>
               </div>
 
               <div>
@@ -248,12 +310,25 @@ export default function ReservationsTab() {
                   value={formData.lessonType}
                   onChange={(e) => {
                     const type = e.target.value as 'individual' | 'group';
-                    setFormData({ ...formData, lessonType: type, duration: type === 'individual' ? 30 : 60 });
+                    setFormData({ ...formData, lessonType: type });
                   }}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold"
                 >
                   <option value="individual">Individual (30 min)</option>
                   <option value="group">Grupo (60 min)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-black text-black mb-2">📚 Nível</label>
+                <select
+                  value={formData.level}
+                  onChange={(e) => setFormData({ ...formData, level: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold"
+                >
+                  <option value="iniciante">Iniciante</option>
+                  <option value="intermédio">Intermédio</option>
+                  <option value="avançado">Avançado</option>
                 </select>
               </div>
 
@@ -278,6 +353,17 @@ export default function ReservationsTab() {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-sm font-black text-black mb-2">📝 Notas</label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold"
+                  placeholder="Observações sobre a aula..."
+                  rows={3}
+                />
+              </div>
+
               <div className="bg-blue-50 border-l-4 border-blue-600 p-4 rounded">
                 <p className="text-sm font-black text-black">ℹ️ Regras de Agendamento:</p>
                 <ul className="text-xs font-bold text-black mt-2 space-y-1">
@@ -297,9 +383,10 @@ export default function ReservationsTab() {
               </button>
               <button
                 onClick={handleSave}
-                className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-black"
+                disabled={isSubmitting}
+                className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition font-black"
               >
-                Guardar Reserva
+                {isSubmitting ? 'Guardando...' : 'Guardar Reserva'}
               </button>
             </div>
           </div>
