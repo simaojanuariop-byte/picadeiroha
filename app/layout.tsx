@@ -3,6 +3,7 @@
 import "./globals.css";
 import Navbar from "@/components/common/Navbar";
 import Footer from "@/components/common/Footer";
+import TaskInitializer from "@/components/TaskInitializer";
 import { SessionProvider } from "next-auth/react";
 
 export default function RootLayout({
@@ -14,6 +15,7 @@ export default function RootLayout({
     <html lang="pt">
       <body className="antialiased">
         <SessionProvider>
+          <TaskInitializer />
           <Navbar />
           {children}
           <Footer />
