@@ -17,6 +17,7 @@ import AvailabilityTab from "@/components/admin/AvailabilityTab";
 import ProfessorsTab from "@/components/admin/ProfessorsTab";
 import HorsesTab from "@/components/admin/HorsesTab";
 import ServicesTab from "@/components/admin/ServicesTab";
+import LessonRequestsTab from "@/components/admin/LessonRequestsTab";
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();
@@ -71,6 +72,7 @@ export default function DashboardPage() {
           {[
             { id: 'overview', label: 'Resumo', icon: '📊' },
             { id: 'calendar', label: 'Calendário', icon: '📆' },
+            { id: 'lesson-requests', label: 'Pedidos de Aulas', icon: '📝' },
             { id: 'professors', label: 'Professores', icon: '👨‍🏫' },
             { id: 'horses', label: 'Cavalos', icon: '🐴' },
             { id: 'services', label: 'Serviços', icon: '🎯' },
@@ -225,6 +227,7 @@ export default function DashboardPage() {
             )}
 
             {activeTab === 'calendar' && <CalendarTab />}
+            {activeTab === 'lesson-requests' && <LessonRequestsTab />}
             {activeTab === 'professors' && <ProfessorsTab />}
             {activeTab === 'horses' && <HorsesTab />}
             {activeTab === 'services' && <ServicesTab />}

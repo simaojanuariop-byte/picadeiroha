@@ -42,20 +42,25 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, date, time, type, horse, level, notes, status } = body;
+    const { email, userId, date, startTime, time, lessonType, type, horse, level, notes, status } = body;
 
-    // Validações básicas
-    if (!userId || !date || !time || !type) {
+    // Validações básicas - aceitar email ou userId
+    const userIdentifier = email || userId;
+    const reservationDate = date;
+    const reservationTime = startTime || time;
+    const reservationType = lessonType || type;
+
+    if (!userIdentifier || !reservationDate || !reservationTime || !reservationType) {
       return NextResponse.json(
-        { error: 'Campos obrigatórios ausentes: userId, date, time, type' },
+        { error: 'Campos obrigatórios ausentes: email/userId, date, time, type' },
         { status: 400 }
       );
     }
 
-    // Validar que o usuário existe
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    // Buscar usuário pelo email ou ID
+    const user = email 
+      ? await prisma.user.findUnique({ where: { email } })
+      : await prisma.user.findUnique({ where: { id: userId } });
 
     if (!user) {
       return NextResponse.json(
@@ -67,8 +72,8 @@ export async function POST(request: NextRequest) {
     // Validar limite de reservas por hora (máximo 4)
     const sameDateTimeReservations = await prisma.reservation.count({
       where: {
-        date: new Date(date),
-        time: time,
+        date: new Date(reservationDate),
+        time: reservationTime,
         status: { not: 'cancelled' },
       },
     });
@@ -85,7 +90,7 @@ export async function POST(request: NextRequest) {
       const sameHorseReservations = await prisma.reservation.count({
         where: {
           horse: horse,
-          date: new Date(date),
+          date: new Date(reservationDate),
           status: { not: 'cancelled' },
         },
       });
@@ -101,10 +106,10 @@ export async function POST(request: NextRequest) {
     // Criar reserva no banco de dados
     const reservation = await prisma.reservation.create({
       data: {
-        userId,
-        date: new Date(date),
-        time,
-        type,
+        userId: user.id,
+        date: new Date(reservationDate),
+        time: reservationTime,
+        type: reservationType,
         horse: horse || null,
         level: level || null,
         notes: notes || null,
@@ -143,3 +148,56 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, status } = body;
+
+    if (!id || !status) {
+      return NextResponse.json(
+        { error: 'Campos obrigatórios ausentes: id, status' },
+        { status: 400 }
+      );
+    }
+
+    if (!['pending', 'confirmed', 'cancelled'].includes(status)) {
+      return NextResponse.json(
+        { error: 'Status inválido. Valores permitidos: pending, confirmed, cancelled' },
+        { status: 400 }
+      );
+    }
+
+    const reservation = await prisma.reservation.update({
+      where: { id },
+      data: { status },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    const formattedReservation = {
+      id: reservation.id,
+      clientName: reservation.user?.name || 'Sem nome',
+      professor: 'Professor',
+      horses: reservation.horse ? [reservation.horse] : [],
+      lessonType: reservation.type === 'individual' ? 'individual' : 'group' as 'individual' | 'group',
+      date: reservation.date.toISOString().split('T')[0],
+      startTime: reservation.time,
+      duration: (reservation.type === 'individual' ? 30 : 60) as 30 | 60,
+      status: reservation.status === 'confirmed' ? 'confirmed' : reservation.status === 'pending' ? 'pending' : 'cancelled' as 'confirmed' | 'pending' | 'cancelled',
+    };
+
+    return NextResponse.json(formattedReservation);
+  } catch (error) {
+    console.error('Erro ao atualizar reserva:', error);
+    return NextResponse.json(
+      { error: 'Erro ao atualizar reserva. Por favor, tente novamente.' },
+      { status: 500 }
+    );
+  }
+}

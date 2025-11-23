@@ -2,7 +2,7 @@
 
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 
 interface Order {
@@ -29,10 +29,9 @@ export default function ClientAreaPage() {
     { id: 'PED-001', date: '2024-12-10', items: 'Sela de Dressage', total: 450, status: 'delivered' },
     { id: 'PED-002', date: '2024-12-15', items: 'Freio Português, Cabeção', total: 369, status: 'shipped' },
   ]);
-  const [reservations, setReservations] = useState<Reservation[]>([
-    { id: 'RES-001', date: '2024-12-25', time: '10:00', type: 'Aula Individual', status: 'confirmed' },
-    { id: 'RES-002', date: '2024-12-28', time: '14:30', type: 'Aula em Grupo', status: 'pending' },
-  ]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [isLoadingReservations, setIsLoadingReservations] = useState(true);
+  const [showNewReservationForm, setShowNewReservationForm] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileData, setProfileData] = useState({
     name: session?.user?.name || '',
@@ -41,12 +40,46 @@ export default function ClientAreaPage() {
     address: 'Rua Example, 123',
     birthDate: '1990-05-15',
   });
+  const [newReservation, setNewReservation] = useState({
+    date: '',
+    time: '',
+    type: 'individual',
+    horse: '',
+    level: 'iniciante',
+    notes: ''
+  });
+
+  // Carregar reservas do banco de dados
+  const fetchReservations = useCallback(async () => {
+    if (!session?.user?.email) return;
+    try {
+      const response = await fetch('/api/reservations');
+      if (response.ok) {
+        const data = await response.json();
+        // Filtrar reservas do utilizador actual
+        const userReservations = data.map((res: any) => ({
+          id: res.id,
+          date: res.date,
+          time: res.startTime,
+          type: res.lessonType === 'individual' ? 'Aula Individual' : 'Aula em Grupo',
+          status: res.status
+        }));
+        setReservations(userReservations);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar reservas:', error);
+    } finally {
+      setIsLoadingReservations(false);
+    }
+  }, [session?.user?.email]);
 
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/auth/login");
+    } else if (status === "authenticated") {
+      fetchReservations();
     }
-  }, [status, router]);
+  }, [status, router, fetchReservations]);
 
   if (status === "loading") {
     return <div className="flex items-center justify-center min-h-screen">Carregando...</div>;
@@ -64,6 +97,50 @@ export default function ClientAreaPage() {
   const handleCancelReservation = (id: string) => {
     if (confirm('Tem a certeza que deseja cancelar esta reserva?')) {
       setReservations(reservations.map(r => r.id === id ? { ...r, status: 'cancelled' } : r));
+    }
+  };
+
+  const handleRequestLesson = async () => {
+    if (!newReservation.date || !newReservation.time) {
+      alert('Preencha data e hora!');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: session?.user?.email,
+          date: newReservation.date,
+          startTime: newReservation.time,
+          lessonType: newReservation.type,
+          horse: newReservation.horse || null,
+          level: newReservation.level,
+          notes: newReservation.notes,
+          status: 'pending'
+        })
+      });
+
+      if (response.ok) {
+        alert('✅ Pedido de aula enviado para confirmação do administrador!');
+        setShowNewReservationForm(false);
+        setNewReservation({
+          date: '',
+          time: '',
+          type: 'individual',
+          horse: '',
+          level: 'iniciante',
+          notes: ''
+        });
+        await fetchReservations();
+      } else {
+        const error = await response.json();
+        alert(`❌ ${error.error || 'Erro ao solicitar aula'}`);
+      }
+    } catch (error) {
+      console.error('Erro:', error);
+      alert('❌ Erro ao solicitar aula');
     }
   };
 
@@ -273,33 +350,137 @@ export default function ClientAreaPage() {
             {/* Reservas */}
             {activeTab === 'reservas' && (
               <div className="bg-white rounded-lg shadow-lg p-8">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Minhas Reservas</h2>
-                <div className="space-y-4">
-                  {reservations.map((res) => (
-                    <div key={res.id} className="border rounded-lg p-6 hover:shadow-md transition">
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <p className="font-bold text-gray-900 text-lg">{res.type}</p>
-                          <p className="text-sm text-gray-600">📅 {res.date} às {res.time}</p>
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Minhas Aulas</h2>
+                {isLoadingReservations ? (
+                  <div className="text-center py-8 text-gray-600 font-bold">Carregando aulas...</div>
+                ) : (
+                  <div className="space-y-4">
+                    {reservations.length > 0 ? (
+                      reservations.map((res) => (
+                        <div key={res.id} className="border rounded-lg p-6 hover:shadow-md transition">
+                          <div className="flex justify-between items-start mb-4">
+                            <div>
+                              <p className="font-bold text-gray-900 text-lg">{res.type}</p>
+                              <p className="text-sm text-gray-600">📅 {res.date} às {res.time}</p>
+                            </div>
+                            <span className={`px-4 py-2 rounded-full text-sm font-semibold ${statusBadge[res.status as keyof typeof statusBadge]}`}>
+                              {statusLabel[res.status as keyof typeof statusLabel]}
+                            </span>
+                          </div>
+                          {res.status !== 'cancelled' && (
+                            <button
+                              onClick={() => handleCancelReservation(res.id)}
+                              className="text-red-600 hover:text-red-800 font-semibold text-sm"
+                            >
+                              Cancelar Aula
+                            </button>
+                          )}
                         </div>
-                        <span className={`px-4 py-2 rounded-full text-sm font-semibold ${statusBadge[res.status as keyof typeof statusBadge]}`}>
-                          {statusLabel[res.status as keyof typeof statusLabel]}
-                        </span>
+                      ))
+                    ) : (
+                      <div className="text-center py-8">
+                        <p className="text-gray-600 mb-4">Nenhuma aula reservada</p>
                       </div>
-                      {res.status !== 'cancelled' && (
-                        <button
-                          onClick={() => handleCancelReservation(res.id)}
-                          className="text-red-600 hover:text-red-800 font-semibold text-sm"
-                        >
-                          Cancelar Reserva
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <button className="w-full text-left p-4 bg-amber-50 hover:bg-amber-100 rounded-lg transition border-l-4 border-amber-600 font-semibold text-gray-900">
-                    ➕ Nova Reserva
-                  </button>
-                </div>
+                    )}
+                    {!showNewReservationForm ? (
+                      <button 
+                        onClick={() => setShowNewReservationForm(true)}
+                        className="w-full text-left p-4 bg-amber-50 hover:bg-amber-100 rounded-lg transition border-l-4 border-amber-600 font-semibold text-gray-900"
+                      >
+                        ➕ Solicitar Nova Aula
+                      </button>
+                    ) : (
+                      <div className="bg-amber-50 rounded-lg p-6 border-l-4 border-amber-600">
+                        <h3 className="font-bold text-gray-900 text-lg mb-4">Solicitar Aula</h3>
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Data</label>
+                              <input
+                                type="date"
+                                value={newReservation.date}
+                                onChange={(e) => setNewReservation({...newReservation, date: e.target.value})}
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Hora</label>
+                              <input
+                                type="time"
+                                value={newReservation.time}
+                                onChange={(e) => setNewReservation({...newReservation, time: e.target.value})}
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Aula</label>
+                              <select
+                                value={newReservation.type}
+                                onChange={(e) => setNewReservation({...newReservation, type: e.target.value})}
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                              >
+                                <option value="individual">Individual</option>
+                                <option value="group">Grupo</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Nível</label>
+                              <select
+                                value={newReservation.level}
+                                onChange={(e) => setNewReservation({...newReservation, level: e.target.value})}
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                              >
+                                <option value="iniciante">Iniciante</option>
+                                <option value="intermédio">Intermédio</option>
+                                <option value="avançado">Avançado</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Cavalo (opcional)</label>
+                            <input
+                              type="text"
+                              value={newReservation.horse}
+                              onChange={(e) => setNewReservation({...newReservation, horse: e.target.value})}
+                              placeholder="Nome do cavalo de preferência"
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Observações</label>
+                            <textarea
+                              value={newReservation.notes}
+                              onChange={(e) => setNewReservation({...newReservation, notes: e.target.value})}
+                              placeholder="Observações sobre a aula..."
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                              rows={3}
+                            />
+                          </div>
+                          <div className="bg-blue-50 border border-blue-200 rounded p-4">
+                            <p className="text-sm font-bold text-blue-900">ℹ️ Nota importante:</p>
+                            <p className="text-sm text-blue-800 mt-1">Seu pedido será analisado pelo administrador e você receberá uma confirmação por email quando for aprovado.</p>
+                          </div>
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => setShowNewReservationForm(false)}
+                              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition font-semibold text-gray-900"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={handleRequestLesson}
+                              className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition font-semibold"
+                            >
+                              Solicitar Aula
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
