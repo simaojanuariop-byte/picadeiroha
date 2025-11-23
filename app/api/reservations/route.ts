@@ -39,3 +39,107 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { userId, date, time, type, horse, level, notes, status } = body;
+
+    // Validações básicas
+    if (!userId || !date || !time || !type) {
+      return NextResponse.json(
+        { error: 'Campos obrigatórios ausentes: userId, date, time, type' },
+        { status: 400 }
+      );
+    }
+
+    // Validar que o usuário existe
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Usuário não encontrado' },
+        { status: 404 }
+      );
+    }
+
+    // Validar limite de reservas por hora (máximo 4)
+    const sameDateTimeReservations = await prisma.reservation.count({
+      where: {
+        date: new Date(date),
+        time: time,
+        status: { not: 'cancelled' },
+      },
+    });
+
+    if (sameDateTimeReservations >= 4) {
+      return NextResponse.json(
+        { error: 'Limite de 4 reservas para este horário já atingido' },
+        { status: 409 }
+      );
+    }
+
+    // Validar limite de cavalos por professor (máximo 4)
+    if (horse) {
+      const sameHorseReservations = await prisma.reservation.count({
+        where: {
+          horse: horse,
+          date: new Date(date),
+          status: { not: 'cancelled' },
+        },
+      });
+
+      if (sameHorseReservations >= 4) {
+        return NextResponse.json(
+          { error: 'Limite de 4 utilizações para este cavalo já atingido' },
+          { status: 409 }
+        );
+      }
+    }
+
+    // Criar reserva no banco de dados
+    const reservation = await prisma.reservation.create({
+      data: {
+        userId,
+        date: new Date(date),
+        time,
+        type,
+        horse: horse || null,
+        level: level || null,
+        notes: notes || null,
+        status: status || 'pending',
+      },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    // Retornar reserva criada no formato esperado
+    const formattedReservation = {
+      id: reservation.id,
+      clientName: reservation.user?.name || 'Sem nome',
+      professor: 'Professor',
+      horses: reservation.horse ? [reservation.horse] : [],
+      lessonType: reservation.type === 'individual' ? 'individual' : 'group' as 'individual' | 'group',
+      date: reservation.date.toISOString().split('T')[0],
+      startTime: reservation.time,
+      duration: (reservation.type === 'individual' ? 30 : 60) as 30 | 60,
+      status: reservation.status === 'confirmed' ? 'confirmed' : reservation.status === 'pending' ? 'pending' : 'cancelled' as 'confirmed' | 'pending' | 'cancelled',
+    };
+
+    return NextResponse.json(formattedReservation, { status: 201 });
+  } catch (error) {
+    console.error('Erro ao criar reserva:', error);
+    return NextResponse.json(
+      { error: 'Erro ao criar reserva. Por favor, tente novamente.' },
+      { status: 500 }
+    );
+  }
+}
+
