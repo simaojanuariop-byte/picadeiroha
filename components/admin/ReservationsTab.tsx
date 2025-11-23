@@ -86,7 +86,7 @@ export default function ReservationsTab() {
       lessonType: formData.lessonType,
       date: formData.date,
       startTime: formData.startTime,
-      duration: formData.duration,
+      duration: formData.duration as 30 | 60,
       status: 'pending'
     };
 
